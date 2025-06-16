@@ -126,7 +126,7 @@ class Available
 
     private function isWebView(string $userAgent): bool
     {
-        $this->logger->debug(['User Agent' => $userAgent]);
+        $this->logger->debug(['Tamara - User Agent' => $userAgent]);
 
         if ((strpos($userAgent, 'Mobile/') !== false) && (strpos($userAgent, 'Safari/') === false)) {
             return true;

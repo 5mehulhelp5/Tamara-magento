@@ -6,15 +6,12 @@ use Magento\Config\Model\ResourceModel\Config;
 use Magento\Framework\Exception\IntegrationException;
 use Magento\Payment\Model\Method\Logger;
 use Magento\Sales\Model\Order;
-use Magento\Sales\Model\Order\Payment\Transaction\BuilderInterface as TransactionBuilder;
-use Magento\Sales\Api\TransactionRepositoryInterface;
 use Tamara\Checkout\Api\CancelRepositoryInterface;
 use Tamara\Checkout\Api\CaptureRepositoryInterface;
 use Tamara\Checkout\Api\OrderRepositoryInterface;
 use Tamara\Checkout\Api\RefundRepositoryInterface;
 use Tamara\Checkout\Model\Helper\OrderHelper;
 use Tamara\Checkout\Model\Helper\PaymentHelper;
-use Tamara\Checkout\Model\Helper\StoreHelper;
 use Tamara\Client;
 use Tamara\Configuration;
 use Tamara\Exception\RequestDispatcherException;
@@ -22,10 +19,8 @@ use Tamara\Exception\RequestException;
 use Tamara\Model\Checkout\PaymentType;
 use Tamara\Notification\NotificationService;
 use Tamara\Request\Checkout\CreateCheckoutRequest;
-use Tamara\Request\Order\AuthoriseOrderRequest;
 use Tamara\Request\Webhook\RegisterWebhookRequest;
 use Tamara\Request\Webhook\RemoveWebhookRequest;
-use Tamara\Response\Checkout\CheckPaymentOptionsAvailabilityResponse;
 use Tamara\Response\Checkout\CreateCheckoutResponse;
 use Magento\Sales\Model\Order\Email\Sender\OrderSender;
 use Tamara\Response\Checkout\GetPaymentTypesResponse;
@@ -35,7 +30,6 @@ class TamaraAdapter
     const API_REQUEST_TIMEOUT = 30; //in seconds
     const DISABLE_TAMARA_IDENTIFIER = "DISABLE_TAMARA";
     const DISABLE_TAMARA_CACHE_LIFE_TIME = 900; //15 minutes
-    const IS_SINGLE_CHECKOUT_VERSION_IDENTIFIER = "IS_SINGLE_CHECKOUT_VERSION";
 
     private const WEBHOOK_URL = 'tamara/payment/webhook';
     const TAMARA_ORDER_EVENT_EXPIRED = 'order_expired';
@@ -125,6 +119,8 @@ class TamaraAdapter
 
     protected $magentoCache;
 
+    protected $tamaraOrderAuthorizationHelper;
+
     public function __construct(
         $apiUrl,
         $merchantToken,
@@ -144,7 +140,8 @@ class TamaraAdapter
         \Tamara\Checkout\Gateway\Config\BaseConfig $baseConfig,
         \Tamara\Checkout\Helper\Invoice $tamaraInvoiceHelper,
         \Tamara\Checkout\Helper\Transaction $tamaraTransactionHelper,
-        \Magento\Framework\App\CacheInterface $magentoCache
+        \Magento\Framework\App\CacheInterface $magentoCache,
+        \Tamara\Checkout\Helper\OrderAuthorization $tamaraOrderAuthorizationHelper
     )
     {
         $this->logger = $logger;
@@ -166,6 +163,7 @@ class TamaraAdapter
         $this->tamaraInvoiceHelper = $tamaraInvoiceHelper;
         $this->tamaraTransactionHelper = $tamaraTransactionHelper;
         $this->magentoCache = $magentoCache;
+        $this->tamaraOrderAuthorizationHelper = $tamaraOrderAuthorizationHelper;
     }
 
     /**
@@ -184,17 +182,16 @@ class TamaraAdapter
         try {
             $response = $this->client->getPaymentTypes($countryCode, $currencyCode);
             if (!$response->isSuccess()) {
-                $errorLogs = ["Tamara" => $response->getContent()];
-                $this->logger->debug($errorLogs);
+                $this->logger->debug(["Tamara - Failed response when getPaymentTypes" => $response->getContent()], null, true);
                 return [];
             }
             return $this->parsePaymentTypesResponse($response);
         } catch (RequestException $requestException) {
-            $this->logger->debug(["Tamara" => $requestException->getMessage()]);
+            $this->logger->debug(["Tamara - Error when getPaymentTypes" => $requestException->getMessage()], null, true);
             $this->setDisableTamara(true);
             return null;
         } catch (\Exception $exception) {
-            $this->logger->debug(["Tamara" => $exception->getMessage()]);
+            $this->logger->debug(["Tamara - Error when getPaymentTypes" => $exception->getMessage()], null, true);
         }
         return [];
     }
@@ -265,30 +262,30 @@ class TamaraAdapter
      */
     public function createCheckout(array $data): array
     {
-        $this->logger->debug(['Tamara - Start create checkout']);
+        $this->logger->debug(['Tamara - Start to create checkout session on Tamara']);
 
         try  {
             $orderRequest = OrderHelper::createTamaraOrderFromArray($data);
             $result = $this->client->createCheckout(new CreateCheckoutRequest($orderRequest));
         } catch (\Exception $e) {
-            $this->logger->debug(["Tamara - " . $e->getMessage()]);
+            $this->logger->debug(["Tamara - Error when prepare and create checkout session" => $e->getMessage()], null, true);
             throw $e;
         }
 
         if (!$result->isSuccess()) {
-            $errorLogs = [$result->getContent()];
             $message = $this->getErrorMessageFromResponse($result);
-            $this->logger->debug(["Tamara" => $errorLogs]);
+            $this->logger->debug(["Tamara - Failed response when create a checkout session" => $result->getContent()], null, true);
             throw new IntegrationException(__($message));
         }
 
         $checkoutResponse = $result->getCheckoutResponse();
 
         if ($checkoutResponse === null) {
-            $this->logger->debug(['Tamara - CheckoutResponse was null, please check again']);
+            $this->logger->debug(['Tamara - CheckoutResponse was null, please check again'], null, true);
             throw new IntegrationException(__('The response is error, please ask administrator to help'));
         }
 
+        $this->logger->debug(["End to create checkout session on Tamara"]);
         return $checkoutResponse->toArray();
     }
 
@@ -298,13 +295,12 @@ class TamaraAdapter
         try {
             $authoriseMessage = $this->notificationService->processAuthoriseNotification();
         } catch (\Exception $exception) {
-            $this->logger->debug(["Tamara" => $exception->getMessage()]);
+            $this->logger->debug(["Tamara - Error when process notification message" => $exception->getMessage()], null, true);
 
             return false;
         }
 
         try {
-            // send confirmation to Tamara
             $order = $this->orderRepository->getTamaraOrderByTamaraOrderId($authoriseMessage->getOrderId());
             if ($order->getIsAuthorised()) {
                 return true;
@@ -317,91 +313,14 @@ class TamaraAdapter
                     throw new \Exception("Order status not accepted for authorization, order status: " . $remoteOrderStatus);
                 }
                 if ($remoteOrder->getStatus() == "new" || $remoteOrder->getStatus() == "approved") {
-                    $response = $this->client->authoriseOrder(new AuthoriseOrderRequest($authoriseMessage->getOrderId()));
-
-                    if (!$response->isSuccess() || !in_array($response->getOrderStatus(), ['authorised', 'fully_captured'])) {
-                        throw new \Exception(strval($response->getContent()));
-                    }
+                    $mageOrder = $this->mageRepository->get($order->getOrderId());
+                    $this->tamaraOrderAuthorizationHelper->authorizeOrder($mageOrder, $order, $mageOrder->getStoreId(), $remoteOrder);
                 }
             } else {
                 throw new \Exception(strval($remoteOrder->getContent()));
             }
-
-            $tamaraOrderId = $authoriseMessage->getOrderId();
-            $order = $this->orderRepository->getTamaraOrderByTamaraOrderId($tamaraOrderId);
-            $order->setIsAuthorised(1);
-
-            //set payment method for single checkout
-            $paymentMethod = \Tamara\Checkout\Gateway\Config\BaseConfig::convertPaymentMethodFromTamaraToMagento($remoteOrder->getPaymentType());
-            if ($paymentMethod == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE) {
-                $numberOfInstallments = $remoteOrder->getInstalments();
-                if ($numberOfInstallments != 3) {
-                    $paymentMethod = ($paymentMethod . "_" . $numberOfInstallments);
-                }
-            }
-            if ($paymentMethod != $order->getPaymentType()) {
-                $order->setPaymentType($paymentMethod);
-            }
-            $this->orderRepository->save($order);
-
-            /** @var \Magento\Sales\Model\Order $mageOrder */
-            $mageOrder = $this->mageRepository->get($order->getOrderId());
-            $authoriseStatus = $this->baseConfig->getCheckoutAuthoriseStatus($mageOrder->getStoreId());
-            if (!empty($authoriseStatus)) {
-                $mageOrder->setState(Order::STATE_PROCESSING)->setStatus($authoriseStatus);
-            }
-
-            //set base amount paid
-            $grandTotal = $mageOrder->getGrandTotal();
-            $mageOrder->setTotalDue(0.00);
-            $mageOrder->setTotalPaid($grandTotal);
-            $mageOrder->getPayment()->setAmountPaid($grandTotal);
-            $mageOrder->getPayment()->setAmountAuthorized($grandTotal);
-            $baseAmountPaid = $mageOrder->getBaseGrandTotal();
-            $mageOrder->setBaseTotalDue(0.00);
-            $mageOrder->setBaseTotalPaid($baseAmountPaid);
-            $mageOrder->getPayment()->setBaseAmountPaid($baseAmountPaid);
-            $mageOrder->getPayment()->setBaseAmountAuthorized($baseAmountPaid);
-            $mageOrder->getPayment()->setBaseAmountPaidOnline($baseAmountPaid);
-            $this->orderSender->send($mageOrder);
-
-            $authorisedAmount = $mageOrder->getOrderCurrency()->formatTxt(
-                $mageOrder->getGrandTotal()
-            );
-
-            $authoriseComment = __('Tamara - order was authorised. The authorised amount is %1.', $authorisedAmount);
-            $this->tamaraInvoiceHelper->log(["Create transaction after authorise payment"]);
-            $this->tamaraTransactionHelper->saveAuthoriseTransaction($authoriseComment, $mageOrder, $mageOrder->getIncrementId());
-            if (in_array(\Tamara\Checkout\Model\Config\Source\EmailTo\Options::SEND_EMAIL_WHEN_AUTHORISE, $this->baseConfig->getSendEmailWhen($mageOrder->getStoreId()))) {
-                try {
-                    $this->orderCommentSender->send($mageOrder, true, $authoriseComment);
-                } catch (\Exception $exception) {
-                    $this->logger->debug(["Tamara - Error when sending authorise notification: " . $exception->getMessage()]);
-                }
-                $mageOrder->addCommentToStatusHistory(
-                    __('Notified customer about order #%1 was authorised.', $mageOrder->getIncrementId()),
-                    $this->baseConfig->getCheckoutAuthoriseStatus($mageOrder->getStoreId()), false
-                )->setIsCustomerNotified(true)->save();
-            }
-            $this->mageRepository->save($mageOrder);
-
-            if ($this->baseConfig->getAutoGenerateInvoice($mageOrder->getStoreId()) == \Tamara\Checkout\Model\Config\Source\AutomaticallyInvoice::GENERATE_AFTER_AUTHORISE) {
-                $this->tamaraInvoiceHelper->log(["Automatically generate invoice after authorise payment"]);
-                $this->tamaraInvoiceHelper->generateInvoice($mageOrder->getId());
-            }
-
-            //create capture transaction
-            $captureComment = __('Magento capture transaction created.');
-            $captureTransactionId = $mageOrder->getIncrementId() . "-" . \Magento\Sales\Model\Order\Payment\Transaction::TYPE_CAPTURE;
-            $this->tamaraTransactionHelper->createTransaction($mageOrder, \Magento\Sales\Model\Order\Payment\Transaction::TYPE_CAPTURE, $captureComment, $captureTransactionId);
-
-            if ($mageOrder->getPayment()->getMethod() != $paymentMethod) {
-
-                //update this after the order model saved
-                $this->updatePaymentMethodToDbDirectly($mageOrder->getId(), $paymentMethod);
-            }
         } catch (\Exception $exception) {
-            $this->logger->debug(["Tamara" => "Notification exception: " . $exception->getMessage()]);
+            $this->logger->debug(["Tamara - Error when process notification" => $exception->getMessage()], null, true);
             return false;
         }
 
@@ -436,8 +355,7 @@ class TamaraAdapter
                     $rows = $this->captureRepository->saveCaptureItems($captureItems);
 
                     if (!$rows) {
-                        $this->logger->debug(['Tamara - Cannot save capture items']);
-                        $this->logger->debug($captureItems);
+                        $this->logger->debug(['Tamara - Cannot save capture items' => $captureItems], null, true);
                         throw new IntegrationException(__('Cannot save capture items, please check log'));
                     }
 
@@ -456,12 +374,12 @@ class TamaraAdapter
             } else {
                 if ($response->getStatusCode() !== 409) {
                     $errorLogs = $response->getErrors() ?? [$response->getMessage()];
-                    $this->logger->debug(["Tamara" => $errorLogs]);
+                    $this->logger->debug(["Tamara- Failed response when capture an order" => $errorLogs]);
                     throw new IntegrationException(__('Could not capture in tamara, please check log'));
                 }
             }
         } catch (\Exception $e) {
-            $this->logger->debug(["Tamara - " . $e->getMessage()]);
+            $this->logger->debug(["Tamara - Error when capture an order" => $e->getMessage()], null, true);
             throw new IntegrationException(__($e->getMessage()));
         }
 
@@ -513,7 +431,7 @@ class TamaraAdapter
                     try {
                         $this->orderCommentSender->send($magentoOrder, true, $refundComment);
                     } catch (\Exception $exception) {
-                        $this->logger->debug(["Tamara - Error when sending authorise notification: " . $exception->getMessage()]);
+                        $this->logger->debug(["Tamara - Error when sending authorise notification" => $exception->getMessage()], null, true);
                     }
                     $magentoOrder->addCommentToStatusHistory(
                         __('Notified customer about order #%1 was refunded.', $magentoOrder->getIncrementId()),
@@ -522,13 +440,12 @@ class TamaraAdapter
                 }
             } else {
                 if ($response->getStatusCode() !== 409) {
-                    $errorLogs = [$response->getContent()];
-                    $this->logger->debug(["Tamara" => $errorLogs]);
+                    $this->logger->debug(["Tamara - Failed response when refund an order" => $response->getContent()]);
                     throw new IntegrationException(__($response->getMessage()));
                 }
             }
         } catch (\Exception $e) {
-            $this->logger->debug(["Tamara - " . $e->getMessage()]);
+            $this->logger->debug(["Tamara - Error when refund an order" => $e->getMessage()], null, true);
             throw new IntegrationException(__("Cannot refund from Tamara, error: " . $e->getMessage()));
         }
 
@@ -537,7 +454,7 @@ class TamaraAdapter
 
     public function cancel(array $data): void
     {
-        $this->logger->debug(['Tamara - Start to cancel']);
+        $this->logger->debug(['Tamara - Start to cancel order' . $data['order_id']]);
 
         try {
             $cancelRequest = PaymentHelper::createCancelRequestFromArray($data);
@@ -560,7 +477,7 @@ class TamaraAdapter
                         try {
                             $this->orderCommentSender->send($mageOrder, true, $comment);
                         } catch (\Exception $exception) {
-                            $this->logger->debug(["Tamara - Error when sending authorise notification: " . $exception->getMessage()]);
+                            $this->logger->debug(["Tamara - Error when sending authorise notification" => $exception->getMessage()], null, true);
                         }
                         $mageOrder->addCommentToStatusHistory(
                             __('Notified customer about order #%1 was canceled.', $mageOrder->getIncrementId()),
@@ -571,12 +488,12 @@ class TamaraAdapter
             } else {
                 if ($response->getStatusCode() !== 409) {
                     $errorLogs = [$response->getContent()];
-                    $this->logger->debug(["Tamara" => $errorLogs]);
+                    $this->logger->debug(["Tamara - Failed response when cancel an order" => $errorLogs]);
                     throw new IntegrationException(__($response->getMessage()));
                 }
             }
         } catch (\Exception $e) {
-            $this->logger->debug(["Tamara - " . $e->getMessage()]);
+            $this->logger->debug(["Tamara - Failed when cancel an order" => $e->getMessage()], null, true);
             throw new IntegrationException(__($e->getMessage()));
         }
 
@@ -609,8 +526,7 @@ class TamaraAdapter
             $response = $this->client->registerWebhook($request);
 
             if (!$response->isSuccess()) {
-                $errorLogs = [$response->getContent()];
-                $this->logger->debug(["Tamara" => $errorLogs]);
+                $this->logger->debug(["Tamara - Failed response when register a webhook" => $response->getContent()]);
                 throw new IntegrationException(__($response->getMessage()));
             }
 
@@ -623,7 +539,7 @@ class TamaraAdapter
                 $scopeId
             );
         } catch (\Exception $exception) {
-            $this->logger->debug(["Tamara - " . $exception->getMessage()]);
+            $this->logger->debug(["Tamara - Error when register webhook" => $exception->getMessage()], null, true);
 
             throw $exception;
         }
@@ -649,12 +565,11 @@ class TamaraAdapter
             $response = $this->client->removeWebhook($request);
 
             if (!$response->isSuccess()) {
-                $errorLogs = [$response->getContent()];
-                $this->logger->debug(["Tamara" => $errorLogs]);
+                $this->logger->debug(["Tamara - Failed response when delete a webhook" => $response->getContent()]);
                 throw new IntegrationException(__($response->getMessage()));
             }
         } catch (RequestException $exception) {
-            $this->logger->debug(["Tamara" => $exception->getMessage()]);
+            $this->logger->debug(["Tamara - Error when delete webhook" => $exception->getMessage()], null, true);
             return;
         }
 
@@ -706,7 +621,7 @@ class TamaraAdapter
             $mageOrder->getResource()->save($mageOrder);
 
         } catch (\Exception $exception) {
-            $this->logger->debug(["Tamara - " . $exception->getMessage()]);
+            $this->logger->debug(["Tamara - error when process webhook" => $exception->getMessage()], null, true);
             return false;
         }
 

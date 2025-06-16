@@ -56,7 +56,7 @@ class ScanOrder extends Command
             }
         } catch (\Exception $exception) {
             // just log the error and don't break the job
-            $this->helper->log([$exception->getMessage()]);
+            $this->helper->log(["Error when process scan order" => $exception->getMessage()], true);
         }
     }
 

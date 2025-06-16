@@ -97,15 +97,41 @@ class AbstractData extends \Tamara\Checkout\Helper\Core
         return $this->storeManager->getStore();
     }
 
-    public function log(array $data)
+    public function log(array $data, $forceLog = false)
     {
-        if (count($data) && is_string($data[0])) {
-            $data[0] = "Tamara - " . $data[0];
-            if ($this->getOutput()) {
-                $this->output->writeln($data[0]);
+        if (!empty($data)) {
+            reset($data);
+            $firstKey = key($data);
+            if (is_string($firstKey)) {
+                if (!$this->startsWith(strtolower($firstKey), "tamara")) {
+
+                    //Add Tamara to first key
+                    $firstValue = $data[$firstKey];
+                    $newKey = "Tamara - " . $firstKey;
+                    unset($data[$firstKey]);
+                    $newArray = [$newKey => $firstValue] + $data;
+                    $data = $newArray;
+                    $firstKey = $newKey;
+                }
+                if ($this->getOutput()) {
+                    $this->output->writeln($firstKey);
+                }
+            } else {
+                if (!empty($data[0]) && is_string($data[0])) {
+                    if (!$this->startsWith(strtolower($data[0]), "tamara")) {
+                        $data[0] = "Tamara - " . $data[0];
+                    }
+                    if ($this->getOutput()) {
+                        $this->output->writeln($data[0]);
+                    }
+                }
+            }
+            if ($forceLog) {
+                $this->getLogger()->debug($data, null, true);
+            } else {
+                $this->getLogger()->debug($data, null, $this->tamaraConfig->enabledDebug());
             }
         }
-        $this->getLogger()->debug($data, null, $this->tamaraConfig->enabledDebug());
     }
 
     /**

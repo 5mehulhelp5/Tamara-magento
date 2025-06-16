@@ -18,6 +18,8 @@
                 <use_magento_success_page>1</use_magento_success_page>
                 <group>tamara</group>
                 <display_limit_warning>1</display_limit_warning>
+                <order_status_sync_enabled>1</order_status_sync_enabled>
+                <order_status_sync_time>-40 minutes</order_status_sync_time>
             </tamara_checkout>
             <tamara_pay_later>
                 <active>1</active>
