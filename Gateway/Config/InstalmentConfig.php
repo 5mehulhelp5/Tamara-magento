@@ -57,7 +57,7 @@ class InstalmentConfig extends MagentoPaymentConfig
         if ($numberOfInstallments == 0) {
             $numberOfInstallments = 3;
         }
-        if ($numberOfInstallments == 3) {
+        if ($numberOfInstallments == 3 || $numberOfInstallments > 12) {
             return self::PAYMENT_TYPE_CODE;
         }
         return self::PAYMENT_TYPE_CODE . "_" . $numberOfInstallments;

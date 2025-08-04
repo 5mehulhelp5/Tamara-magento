@@ -83,6 +83,7 @@ class ScanOrder extends Command
     {
         $this->prepare($input, $output);
         $this->process();
+        return 0;
     }
 
     protected function prepare(InputInterface $input, OutputInterface $output)

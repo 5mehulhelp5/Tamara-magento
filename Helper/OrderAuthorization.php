@@ -128,9 +128,13 @@ class OrderAuthorization extends AbstractData
             $tamaraOrder->setIsAuthorised(1);
 
             //set payment method for single checkout
-            $paymentMethod = \Tamara\Checkout\Gateway\Config\BaseConfig::convertPaymentMethodFromTamaraToMagento($remoteOrder->getPaymentType());
             $numberOfInstallments = $remoteOrder->getInstalments();
-            if ($paymentMethod == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE) {
+            if (!empty($numberOfInstallments)) {
+                $paymentMethod = \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE;
+            } else {
+                $paymentMethod = \Tamara\Checkout\Gateway\Config\BaseConfig::convertPaymentMethodFromTamaraToMagento($remoteOrder->getPaymentType());
+            }
+            if ($paymentMethod == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE && $numberOfInstallments < 13) {
                 if ($numberOfInstallments != 3) {
                     $paymentMethod = ($paymentMethod . "_" . $numberOfInstallments);
                 }

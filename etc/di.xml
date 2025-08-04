@@ -553,6 +553,9 @@
     <type name="Magento\Sales\Model\Order">
         <plugin name="update_payment_method_for_single_checkout" type="Tamara\Checkout\Plugin\Magento\Sales\Model\Order" sortOrder="999" />
     </type>
+    <type name="Magento\Sales\Block\Adminhtml\Order\View\Tab\Info">
+        <plugin name="add_additional_info_to_payment_adminhtml" type="Tamara\Checkout\Plugin\Magento\Sales\Block\Adminhtml\Order\View\Tab\Info" sortOrder="999" />
+    </type>
 
     <type name="Tamara\Checkout\Plugin\Model\Method\Available">
         <arguments>
