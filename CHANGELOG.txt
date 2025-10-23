@@ -1,3 +1,6 @@
+2.11.46
+    New:
+    + Add a license file
 2.11.45
     New:
     + Support Split payments greater than 12 or other payment types
