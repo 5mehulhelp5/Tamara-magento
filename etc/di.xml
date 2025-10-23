@@ -644,7 +644,7 @@
         <arguments>
             <argument name="commands" xsi:type="array">
                 <item name="tamara_checkout_console_command_scan_order" xsi:type="object">Tamara\Checkout\Console\Command\ScanOrder</item>
-                <item name="tamara_checkout_console_command_cancel_abandoned_orders" xsi:type="object">Tamara\Checkout\Console\Command\CancelAbandonedOrder</item>
+                <item name="tamara_checkout_console_command_order_status_sync" xsi:type="object">Tamara\Checkout\Console\Command\OrderStatusSync</item>
             </argument>
         </arguments>
     </type>

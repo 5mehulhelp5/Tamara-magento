@@ -110,8 +110,11 @@ class Cancel extends Action
                     $order->getResource()->save($order);
                 }
             } catch (\Exception $e) {
+                /**
+                 * @var \Magento\Payment\Model\Method\Logger $logger
+                 */
                 $logger = $this->_objectManager->get('TamaraCheckoutLogger');
-                $logger->debug(["Tamara - Error when process payment cancel: " . $e->getMessage()]);
+                $logger->debug(["Tamara - Error when restore cart or cancel the order" => $e->getMessage()], null, true);
             }
         }
 

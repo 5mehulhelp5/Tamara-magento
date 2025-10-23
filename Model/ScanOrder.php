@@ -89,7 +89,7 @@ class ScanOrder
             $startTime = gmdate('Y-m-d H:i:s', strtotime($startTime));
             $endTime = gmdate('Y-m-d H:i:s', strtotime($endTime));
         } catch (\Exception $exception) {
-            $this->log("Time format is not support");
+            $this->log(["Error when scan order, time format is not support" => $exception->getMessage()], true);
             throw $exception;
         }
         $tamaraOrderCollection = $this->tamaraOrderCollectionFactory->create();
@@ -154,9 +154,9 @@ class ScanOrder
     /**
      * @param array $data
      */
-    protected function log(array $data)
+    protected function log(array $data, $forceLog = false)
     {
-        $this->helper->log($data);
+        $this->helper->log($data, $forceLog);
     }
 
     /**
@@ -170,7 +170,7 @@ class ScanOrder
             try {
                 $this->$method($orderId);
             } catch (\Exception $exception) {
-                $this->log([$exception->getMessage()]);
+                $this->log(["Error when scan order" => $exception->getMessage()], true);
             }
         }
     }

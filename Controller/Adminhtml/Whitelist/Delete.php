@@ -2,8 +2,6 @@
 
 namespace Tamara\Checkout\Controller\Adminhtml\Whitelist;
 
-use Magento\Setup\Exception;
-
 class Delete extends \Magento\Backend\App\Action
 {
 

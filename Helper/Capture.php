@@ -78,9 +78,11 @@ class Capture extends \Tamara\Checkout\Helper\AbstractData
         }
 
         if (!$this->canCapture($order)) {
-            $this->log(['Order cannot capture']);
+            $this->log(['Order cannot capture'], true);
             return;
         }
+
+        $this->log(["Capture order " . $orderId]);
 
         $tamaraOrder = $this->tamaraOrderRepository->getTamaraOrderByOrderId($order->getId());
         $data['order_id'] = $order->getId();

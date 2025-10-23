@@ -5,8 +5,6 @@ namespace Tamara\Checkout\Controller\Payment;
 use Magento\Checkout\Model\Session;
 use Magento\Framework\App\Action\Action;
 use Magento\Sales\Api\OrderRepositoryInterface;
-use Magento\Sales\Model\Order;
-use Magento\Sales\Model\Order\Email\Sender\OrderSender;
 use Tamara\Checkout\Api\OrderRepositoryInterface as TamaraOrderRepository;
 use Tamara\Checkout\Gateway\Config\BaseConfig;
 use Tamara\Checkout\Model\Helper\CartHelper;
@@ -33,22 +31,12 @@ class Success extends Action
 
     protected $tamaraHelper;
 
-    private $orderSender;
-
-    /**
-     * @var \Tamara\Checkout\Helper\Invoice
-     */
-    protected $tamaraInvoiceHelper;
-
     /**
      * @var \Tamara\Checkout\Helper\Transaction
      */
     protected $tamaraTransactionHelper;
 
-    /**
-     * @var \Magento\Sales\Model\Order\Email\Sender\OrderCommentSender
-     */
-    private $orderCommentSender;
+    protected $tamaraOrderAuthorizationHelper;
 
     public function __construct(
         \Magento\Framework\App\Action\Context $context,
@@ -60,10 +48,8 @@ class Success extends Action
         TamaraOrderRepository $tamaraOrderRepository,
         \Tamara\Checkout\Model\Adapter\TamaraAdapterFactory $tamaraAdapterFactory,
         \Tamara\Checkout\Helper\AbstractData $tamaraHelper,
-        OrderSender $orderSender,
-        \Tamara\Checkout\Helper\Invoice $tamaraInvoiceHelper,
         \Tamara\Checkout\Helper\Transaction $tamaraTransactionHelper,
-        \Magento\Sales\Model\Order\Email\Sender\OrderCommentSender $orderCommentSender
+        \Tamara\Checkout\Helper\OrderAuthorization $tamaraOrderAuthorizationHelper
     ) {
         $this->_pageFactory = $pageFactory;
         parent::__construct($context);
@@ -74,14 +60,15 @@ class Success extends Action
         $this->tamaraOrderRepository = $tamaraOrderRepository;
         $this->tamaraAdapterFactory = $tamaraAdapterFactory;
         $this->tamaraHelper = $tamaraHelper;
-        $this->orderSender = $orderSender;
-        $this->tamaraInvoiceHelper = $tamaraInvoiceHelper;
         $this->tamaraTransactionHelper = $tamaraTransactionHelper;
-        $this->orderCommentSender = $orderCommentSender;
+        $this->tamaraOrderAuthorizationHelper = $tamaraOrderAuthorizationHelper;
     }
 
     public function execute()
     {
+        /**
+         * @var \Magento\Payment\Model\Method\Logger $logger
+         */
         $logger = $this->_objectManager->get('TamaraCheckoutLogger');
         try {
             $orderId = $this->_request->getParam('order_id', 0);
@@ -95,31 +82,13 @@ class Success extends Action
             if ($magentoOrderState == \Magento\Sales\Model\Order::STATE_NEW) {
                 $isAllowed = true;
             }
-            if ($magentoOrderState == \Magento\Sales\Model\Order::STATE_PROCESSING) {
+            if ($magentoOrderState == \Magento\Sales\Model\Order::STATE_PROCESSING || $magentoOrderState == \Magento\Sales\Model\Order::STATE_COMPLETE) {
                 if ($tamaraOrder->getIsAuthorised()) {
                     $isAllowed = true;
                 }
             }
             if (!$isAllowed) {
                 return $this->redirectToCartPage();
-            }
-            $paymentMethod = null;
-            if ($this->tamaraHelper->isSingleCheckoutEnabled($storeId)) {
-                $adapter = $this->tamaraAdapterFactory->create($storeId);
-                $remoteOrder = $adapter->getTamaraOrderFromRemote($order->getIncrementId());
-                if ($remoteOrder->isSuccess()) {
-                    $numberOfInstallments = null;
-                    $paymentMethod = \Tamara\Checkout\Gateway\Config\BaseConfig::convertPaymentMethodFromTamaraToMagento($remoteOrder->getPaymentType());
-                    if ($paymentMethod == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE) {
-                        $numberOfInstallments = $remoteOrder->getInstalments();
-                        if ($numberOfInstallments != 3) {
-                            $paymentMethod = ($paymentMethod . "_" . $numberOfInstallments);
-                        }
-                    }
-                    $tamaraOrder->setPaymentType($paymentMethod);
-                    $tamaraOrder->setNumberOfInstallments($numberOfInstallments);
-                    $this->tamaraOrderRepository->save($tamaraOrder);
-                }
             }
         } catch (\Exception $exception) {
             return $this->redirectToCartPage();
@@ -128,78 +97,13 @@ class Success extends Action
             if (!(bool) $tamaraOrder->getIsAuthorised()) {
 
                 //authorize order
-                $apiUrl = $this->config->getApiUrl($storeId);
-                $apiToken = $this->config->getMerchantToken($storeId);
-                $config = \Tamara\Configuration::create($apiUrl, $apiToken);
-                $client = \Tamara\Client::create($config);
-                $tamaraOrderId = $tamaraOrder->getTamaraOrderId();
-                $response = $client->authoriseOrder(new \Tamara\Request\Order\AuthoriseOrderRequest($tamaraOrderId));
-
-                if ($response->isSuccess() && in_array($response->getOrderStatus(), ['authorised', 'fully_captured'])) {
-                    $tamaraOrder->setIsAuthorised(1);
-                    $this->tamaraOrderRepository->save($tamaraOrder);
-
-                    $authoriseStatus = $this->config->getCheckoutAuthoriseStatus($storeId);
-                    if (!empty($authoriseStatus)) {
-                        $order->setState(Order::STATE_PROCESSING)->setStatus($authoriseStatus);
-                    }
-
-                    //set base amount paid
-                    $grandTotal = $order->getGrandTotal();
-                    $order->setTotalDue(0.00);
-                    $order->setTotalPaid($grandTotal);
-                    $order->getPayment()->setAmountPaid($grandTotal);
-                    $order->getPayment()->setAmountAuthorized($grandTotal);
-                    $baseAmountPaid = $order->getBaseGrandTotal();
-                    $order->setBaseTotalDue(0.00);
-                    $order->setBaseTotalPaid($baseAmountPaid);
-                    $order->getPayment()->setBaseAmountPaid($baseAmountPaid);
-                    $order->getPayment()->setBaseAmountAuthorized($baseAmountPaid);
-                    $order->getPayment()->setBaseAmountPaidOnline($baseAmountPaid);
-                    $this->orderSender->send($order);
-
-                    $authorisedAmount = $order->getOrderCurrency()->formatTxt(
-                        $order->getGrandTotal()
-                    );
-
-                    $authoriseComment = __('Tamara - order was authorised. The authorised amount is %1.', $authorisedAmount);
-                    $this->tamaraInvoiceHelper->log(["Create transaction after authorise payment"]);
-                    $this->tamaraTransactionHelper->saveAuthoriseTransaction($authoriseComment, $order, $order->getIncrementId());
-                    if (in_array(\Tamara\Checkout\Model\Config\Source\EmailTo\Options::SEND_EMAIL_WHEN_AUTHORISE, $this->config->getSendEmailWhen($order->getStoreId()))) {
-                        try {
-                            $this->orderCommentSender->send($order, true, $authoriseComment);
-                        } catch (\Exception $exception) {
-                            $logger->debug(["Tamara - Error when sending authorise notification: " . $exception->getMessage()]);
-                        }
-                        $order->addStatusHistoryComment(
-                            __('Notified customer about order #%1 was authorised.', $order->getIncrementId()),
-                            $this->config->getCheckoutAuthoriseStatus($order->getStoreId()))->setIsCustomerNotified(true)->save();
-                    }
-                    $this->orderRepository->save($order);
-
-                    if ($this->config->getAutoGenerateInvoice($order->getStoreId()) == \Tamara\Checkout\Model\Config\Source\AutomaticallyInvoice::GENERATE_AFTER_AUTHORISE) {
-                        $this->tamaraInvoiceHelper->log(["Automatically generate invoice after authorise payment"]);
-                        $this->tamaraInvoiceHelper->generateInvoice($order->getId());
-                    }
-
-                    //create capture transaction
-                    $captureComment = __('Magento capture transaction created.');
-                    $captureTransactionId = $order->getIncrementId() . "-" . \Magento\Sales\Model\Order\Payment\Transaction::TYPE_CAPTURE;
-                    $this->tamaraTransactionHelper->createTransaction($order, \Magento\Sales\Model\Order\Payment\Transaction::TYPE_CAPTURE, $captureComment, $captureTransactionId);
-                } else {
-                    $successStatus = $this->config->getCheckoutSuccessStatus($storeId);
-                    $order->setState(Order::STATE_PENDING_PAYMENT)->setStatus($successStatus);
-                    $order->addStatusHistoryComment(__('Tamara - order checkout success, we will confirm soon'), false);
-                    $order->getResource()->save($order);
-                }
-                if ($paymentMethod !== null && $order->getPayment()->getMethod() != $paymentMethod) {
-                    $adapter = $this->tamaraAdapterFactory->create($storeId);
-                    $adapter->updatePaymentMethodToDbDirectly($orderId, $paymentMethod);
-                }
-                //end
+                $adapter = $this->tamaraAdapterFactory->create($storeId);
+                $client = $adapter->getClient();
+                $remoteOrder = $client->getOrder(new \Tamara\Request\Order\GetOrderRequest($tamaraOrder->getTamaraOrderId()));
+                $this->tamaraOrderAuthorizationHelper->authorizeOrder($order, $tamaraOrder, $storeId, $remoteOrder);
             }
         } catch (\Exception $e) {
-            $logger->debug(['Tamara - Success has error' => $e->getMessage()]);
+            $logger->debug(['Tamara - Error when authorize order' => $e->getMessage()], null, true);
         }
 
         if (!empty($merchantSuccessUrl = $this->config->getMerchantSuccessUrl($storeId))) {

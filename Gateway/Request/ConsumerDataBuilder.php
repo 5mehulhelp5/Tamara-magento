@@ -100,7 +100,7 @@ class ConsumerDataBuilder implements BuilderInterface
             $consumer->setIsFirstOrder($this->isFirstOrder($order->getCustomerId()));
 
         } catch (\Exception $e) {
-            $this->logger->debug(["Tamara - " . $e->getMessage()]);
+            $this->logger->debug(["Tamara - Error when building common data" => $e->getMessage()], null, true);
         }
 
         return [self::CONSUMER => $consumer];

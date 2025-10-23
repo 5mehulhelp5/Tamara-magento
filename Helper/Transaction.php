@@ -60,8 +60,8 @@ class Transaction extends \Tamara\Checkout\Helper\AbstractData
             $order->save();
 
             return $transaction->save()->getTransactionId();
-        } catch (Exception $e) {
-            $this->log([$e->getMessage()]);
+        } catch (\Exception $e) {
+            $this->log(["Error when creating a transaction in Magento" => $e->getMessage()], true);
         }
         return null;
     }

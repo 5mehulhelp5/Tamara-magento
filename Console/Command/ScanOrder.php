@@ -2,7 +2,6 @@
 
 namespace Tamara\Checkout\Console\Command;
 
-use Exception;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -55,9 +54,9 @@ class ScanOrder extends Command
             } else {
                 $scanOrder->scan($this->input->getOption(self::START_TIME));
             }
-        } catch (Exception $exception) {
-            // logs the error and keep the job running
-            $this->helper->log([$exception->getMessage()]);
+        } catch (\Exception $exception) {
+            // just log the error and don't break the job
+            $this->helper->log(["Error when process scan order" => $exception->getMessage()], true);
         }
     }
 

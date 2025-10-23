@@ -71,7 +71,7 @@ class Invoice extends \Tamara\Checkout\Helper\AbstractData
                     ->save();
             }
         } catch (\Exception $exception) {
-            $this->log([$exception->getMessage()]);
+            $this->log(["Error when generate invoice for an order" => $exception->getMessage()], true);
         }
     }
 }

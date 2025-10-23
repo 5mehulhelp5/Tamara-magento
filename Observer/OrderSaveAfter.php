@@ -85,8 +85,7 @@ class OrderSaveAfter extends AbstractObserver
     protected function captureOrderWhenChangeStatus(Order $order): void
     {
         if (empty($this->config->getOrderStatusShouldBeCaptured($order->getStoreId()))) {
-            $this->logger->debug(['Tamara - Capture when order status change is not set, skip capture'], null,
-                $this->config->enabledDebug($order->getStoreId()));
+            $this->logger->debug(['Tamara - Capture when order status change is not set, skip capture']);
             return;
         }
 

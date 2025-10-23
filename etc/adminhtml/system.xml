@@ -157,11 +157,6 @@
                         <source_model>Tamara\Checkout\Model\Config\Source\Order\State\StateNew\Status</source_model>
                         <validate>required-entry</validate>
                     </field>
-                    <field id="checkout_success_status" translate="label" type="select" sortOrder="220" showInDefault="1" showInWebsite="1" showInStore="0">
-                        <label>Order status when checkout is success (after redirect)</label>
-                        <source_model>Tamara\Checkout\Model\Config\Source\Order\State\PendingPayment\Status</source_model>
-                        <validate>required-entry</validate>
-                    </field>
                     <field id="checkout_cancel_status" translate="label" type="select" sortOrder="230" showInDefault="1" showInWebsite="1" showInStore="0">
                         <label>Order status when checkout is canceled by customer</label>
                         <source_model>Tamara\Checkout\Model\Config\Source\Order\State\Cancelled\Status</source_model>
@@ -203,6 +198,20 @@
                     </field>
                 </group>
 
+                <group id="order_status_sync" translate="label" type="text" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="0">
+                    <label>Order Status Synchronization</label>
+                    <field id="enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="0">
+                        <label>Enable Order Status Sync</label>
+                        <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                        <config_path>payment/tamara_checkout/order_status_sync_enabled</config_path>
+                        <comment>Enable scan orders in Magento, then authorize or cancel them depending on the status on Tamara portal</comment>
+                    </field>
+                    <field id="sync_time" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="0">
+                        <label>Process Orders Before</label>
+                        <config_path>payment/tamara_checkout/order_status_sync_time</config_path>
+                        <comment>Time interval for processing orders (e.g., -40 minutes)</comment>
+                    </field>
+                </group>
             </group>
         </section>
     </system>

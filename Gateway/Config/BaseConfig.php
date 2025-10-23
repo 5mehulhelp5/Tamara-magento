@@ -124,11 +124,6 @@ class BaseConfig extends MagentoPaymentConfig
         return $this->getValue('checkout_order_statuses/checkout_failure_status', $storeId);
     }
 
-    public function getCheckoutSuccessStatus($storeId = null)
-    {
-        return $this->getValue('checkout_order_statuses/checkout_success_status', $storeId);
-    }
-
     public function getCheckoutAuthoriseStatus($storeId = null)
     {
         return $this->getValue('checkout_order_statuses/checkout_authorise_status', $storeId);
@@ -310,5 +305,25 @@ class BaseConfig extends MagentoPaymentConfig
 
     public function getEnableCreditPreCheck($storeId = null) {
         return boolval($this->getValue('enable_credit_pre_check', $storeId));
+    }
+
+    /**
+     * Check if order status sync is enabled
+     *
+     * @param null $storeId
+     * @return bool
+     */
+    public function isOrderStatusSyncEnabled($storeId = null): bool {
+        return (bool) $this->getValue('order_status_sync_enabled', $storeId);
+    }
+
+    /**
+     * Get the time interval for order status sync
+     *
+     * @param null $storeId
+     * @return string
+     */
+    public function getOrderStatusSyncTime($storeId = null): string {
+        return $this->getValue('order_status_sync_time', $storeId) ?: '-40 minutes';
     }
 }

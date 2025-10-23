@@ -128,46 +128,22 @@ class AuthorizeCommand implements CommandInterface
         $order->setCanSendNewEmailFlag(false);
 
         $orderResult = $this->orderRepository->save($order);
-        $entityId = $orderResult->getEntityId();
-        $currencyCode = $orderResult->getOrderCurrencyCode();
-
-        $commandSubject['order_result_id'] = $entityId;
-        $commandSubject['order_currency_code'] = $currencyCode;
-        $commandSubject['order'] = $orderResult;
-        $commandSubject['phone_verified'] = $this->config->isPhoneVerified($orderResult->getStoreId());
-
-        $transferO = $this->transferFactory->create(
-            $this->requestBuilder->build($commandSubject)
-        );
 
         try {
-            $response = $this->client->placeRequest($transferO);
-
-            //set state for new order
+            // We don't create checkout session here anymore, just prepare the order
+            // set state for new order
             $order->setState(Order::STATE_NEW)->setStatus($this->config->getCheckoutOrderCreateStatus($orderResult->getStoreId()));
 
-            $tamaraOrder = $this->tamaraOrderFactory->create();
-            $tamaraOrder->setData([
-                'order_id' => $entityId,
-                'tamara_order_id' => $response['order_id'],
-                'redirect_url' => $response['checkout_url'],
-            ]);
-
-            $order->addStatusHistoryComment(__('Tamara - order was created, order id: ' . $response['order_id']), false);
-            $this->tamaraOrderRepository->save($tamaraOrder);
+            // Add comment to order history
+            $order->addStatusHistoryComment(__('Tamara - waiting for Tamara checkout session to be created'), false);
         } catch (Exception $e) {
             $orderResult->setState(Order::STATE_CANCELED)->setStatus(Order::STATE_CANCELED);
             $this->orderRepository->save($orderResult);
-            $this->logger->debug(["Tamara - " . $e->getMessage()]);
+            $this->logger->debug(["Tamara - Error in execute AuthorizeCommand" => $e->getMessage()], null, true);
             throw $e;
         }
 
-        if ($this->handler) {
-            $this->handler->handle(
-                $commandSubject,
-                $response
-            );
-        }
+        // We don't have response anymore since we don't create checkout session here
 
         $this->logger->debug(['Tamara - End authorize command']);
     }

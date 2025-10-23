@@ -165,6 +165,9 @@ class Refund extends \Tamara\Checkout\Helper\AbstractData
         /** @var Creditmemo $creditMemo */
 
         $order = $creditMemo->getOrder();
+
+        $this->log(["refundOrderByCreditMemo for the order " . $order->getId()]);
+
         $payment = $order->getPayment();
 
         if ($payment === null) {

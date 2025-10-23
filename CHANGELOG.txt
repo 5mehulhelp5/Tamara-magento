@@ -1,3 +1,8 @@
+1.12.44
+    New:
+    + Update code to create Tamara checkout session before use (not create during Magento order creation)
+    + Add a cronjob to authorise approved orders and cancel expired/declined orders automatically
+    + Add a license file
 1.12.43
     New:
     + Support PAY_BY_FINANCE
