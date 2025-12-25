@@ -85,9 +85,14 @@ class Cancel extends Action
                 throw new \Exception("Order was authorized");
             } else {
                 $tamaraAdapter = $this->tamaraAdapterFactory->create($order->getStoreId());
-                $remoteOrderStatus = $tamaraAdapter->getTamaraOrderFromRemote($order->getIncrementId())->getStatus();
-                if (!in_array($remoteOrderStatus, ['new', 'expired', 'declined'])) {
-                    throw new \Exception("Tamara order status not accepted");
+                $remoteOrder = $tamaraAdapter->getTamaraOrderFromRemote($order->getIncrementId());
+                if ($remoteOrder->isSuccess()) {
+                    $remoteOrderStatus = $remoteOrder->getStatus();
+                    if (!in_array($remoteOrderStatus, ['new', 'expired', 'declined'])) {
+                        throw new \Exception("Tamara order status not accepted");
+                    }
+                } else {
+                    throw new \Exception("Failed to get Tamara remote order " . $tamaraOrder->getTamaraOrderId(). ", error: " . $remoteOrder->getMessage());
                 }
             }
         } catch (\Exception $exception) {

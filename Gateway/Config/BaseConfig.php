@@ -300,7 +300,7 @@ class BaseConfig extends MagentoPaymentConfig
         if ($paymentMethod == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAY_BY_INSTALMENTS) {
             return \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE;
         }
-        return \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAYMENT_TYPE_CODE;
+        return \Tamara\Checkout\Gateway\Config\PayNowConfig::PAYMENT_TYPE_CODE;
     }
 
     public function getEnableCreditPreCheck($storeId = null) {

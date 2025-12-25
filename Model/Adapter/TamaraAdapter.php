@@ -173,26 +173,6 @@ class TamaraAdapter
      */
     public function getPaymentTypes(string $countryCode, $currencyCode = '')
     {
-        if ($this->getDisableTamara()) {
-            return [];
-        }
-        if (empty($this->baseConfig->getMerchantToken())) {
-            return [];
-        }
-        try {
-            $response = $this->client->getPaymentTypes($countryCode, $currencyCode);
-            if (!$response->isSuccess()) {
-                $this->logger->debug(["Tamara - Failed response when getPaymentTypes" => $response->getContent()], null, true);
-                return [];
-            }
-            return $this->parsePaymentTypesResponse($response);
-        } catch (RequestException $requestException) {
-            $this->logger->debug(["Tamara - Error when getPaymentTypes" => $requestException->getMessage()], null, true);
-            $this->setDisableTamara(true);
-            return null;
-        } catch (\Exception $exception) {
-            $this->logger->debug(["Tamara - Error when getPaymentTypes" => $exception->getMessage()], null, true);
-        }
         return [];
     }
 

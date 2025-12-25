@@ -177,20 +177,7 @@ class AbstractData extends \Tamara\Checkout\Helper\Core
      * @return array|mixed
      */
     public function getPaymentTypes($countryCode = 'SA', $currencyCode = '',  $storeId = 0) {
-        $cachedPaymentTypes = $this->getPaymentTypesCached($countryCode, $currencyCode, $storeId);
-        if ($cachedPaymentTypes === false) {
-            $adapter = $this->tamaraAdapterFactory->create($storeId);
-            $cachedPaymentTypes = $adapter->getPaymentTypes($countryCode, $currencyCode);
-
-            //if there is an error when api call
-            if ($cachedPaymentTypes === null) {
-                $cachedPaymentTypes = [];
-                $this->cachePaymentTypes($cachedPaymentTypes, $countryCode, $currencyCode, $storeId, \Tamara\Checkout\Model\Adapter\TamaraAdapter::DISABLE_TAMARA_CACHE_LIFE_TIME);
-            } else {
-                $this->cachePaymentTypes($cachedPaymentTypes, $countryCode, $currencyCode, $storeId);
-            }
-        }
-        return $cachedPaymentTypes;
+        return [];
     }
 
     /**
@@ -347,8 +334,6 @@ class AbstractData extends \Tamara\Checkout\Helper\Core
             $result['has_available_payment_options'] = $response->hasAvailablePaymentOptions();
             $result['single_checkout_enabled'] = $response->isSingleCheckoutEnabled();
             $paymentTypes = [];
-            $allPaymentTypes = $this->getPaymentTypes(\Tamara\Checkout\Gateway\Validator\CountryValidator::CURRENCIES_COUNTRIES_ALLOWED[$currencyCode],
-                $currencyCode, $storeId);
             foreach ($response->getAvailablePaymentLabels() as $paymentType) {
                 $typeName = "";
                 if ($paymentType['payment_type'] == \Tamara\Checkout\Gateway\Config\PayLaterConfig::PAY_BY_LATER) {
@@ -357,11 +342,11 @@ class AbstractData extends \Tamara\Checkout\Helper\Core
                 if ($paymentType['payment_type'] == \Tamara\Checkout\Gateway\Config\PayNextMonthConfig::PAY_NEXT_MONTH) {
                     $typeName = \Tamara\Checkout\Gateway\Config\PayNextMonthConfig::PAYMENT_TYPE_CODE;
                 }
-                if ($paymentType['payment_type'] == \Tamara\Checkout\Gateway\Config\PayNowConfig::PAY_NOW) {
-                    $typeName = \Tamara\Checkout\Gateway\Config\PayNowConfig::PAYMENT_TYPE_CODE;
-                }
-                if ($paymentType['payment_type'] == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAY_BY_INSTALMENTS) {
+                if ($paymentType['payment_type'] == \Tamara\Checkout\Gateway\Config\InstalmentConfig::PAY_BY_INSTALMENTS || !empty($paymentType['instalment'])) {
                     $typeName = \Tamara\Checkout\Gateway\Config\InstalmentConfig::getInstallmentPaymentCode($paymentType['instalment']);
+                }
+                if (empty($typeName)) {
+                    $typeName = \Tamara\Checkout\Gateway\Config\PayNowConfig::PAYMENT_TYPE_CODE;
                 }
                 $title = $paymentType['description_ar'];
                 if (!$this->isArabicLanguage()) {
@@ -383,10 +368,6 @@ class AbstractData extends \Tamara\Checkout\Helper\Core
                         $paymentTypes[$typeName]['number_of_instalments'] = 3;
                     } else {
                         $paymentTypes[$typeName]['number_of_instalments'] = $paymentType['instalment'];
-                    }
-                    if (isset($allPaymentTypes[$typeName])) {
-                        $paymentTypes[$typeName]['min_limit'] = $allPaymentTypes[$typeName]['min_limit'];
-                        $paymentTypes[$typeName]['max_limit'] = $allPaymentTypes[$typeName]['max_limit'];
                     }
                 }
             }
@@ -548,17 +529,7 @@ class AbstractData extends \Tamara\Checkout\Helper\Core
      * @return string
      */
     public function getWidgetVersion() {
-        if (empty($this->getMerchantPublicKey())) {
-            return 'v1';
-        }
-        if ($this->isSingleCheckoutEnabled()) {
-            return 'v2';
-        }
-        $paymentTypesOfStore = $this->getPaymentTypesOfStore();
-        if (is_array($paymentTypesOfStore) && count($paymentTypesOfStore) < 2) {
-            return 'v2';
-        }
-        return 'mixed';
+        return 'v2';
     }
 
     public function getMerchantPublicKey($storeId = null) {

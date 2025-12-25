@@ -1,3 +1,11 @@
+1.12.47
+    New:
+    + Compatible PHP 8.4
+1.12.45
+    New:
+    + Support Split payments greater than 12 or other payment types
+    + Compatible with Symfony Console Command (latest version) for ScanOrder command
+    + No longer support the widget V1
 1.12.44
     New:
     + Update code to create Tamara checkout session before use (not create during Magento order creation)

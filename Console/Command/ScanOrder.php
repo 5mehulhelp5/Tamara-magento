@@ -31,7 +31,7 @@ class ScanOrder extends Command
     public function __construct(
         \Magento\Framework\App\State $state,
         \Tamara\Checkout\Helper\AbstractData $helper,
-        string $name = null
+        ?string $name = null
     ) {
         $this->state = $state;
         $this->helper = $helper;
@@ -83,6 +83,7 @@ class ScanOrder extends Command
     {
         $this->prepare($input, $output);
         $this->process();
+        return 0;
     }
 
     protected function prepare(InputInterface $input, OutputInterface $output)
